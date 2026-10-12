@@ -1,5 +1,5 @@
 export type TestCase = { args: unknown[]; expected: unknown };
-export type Challenge = { id: number; title: string; topic: string; description: string; signature: string; fn: string; constraint: string; hint: string; tests: TestCase[] };
+export type Challenge = { id: number; title: string; topic: string; description: string; signature: string; fn: string; constraint: string; hint: string; tests: TestCase[]; cppArguments?: string[] };
 
 export const challenges: Challenge[] = [
   { id: 1, title: 'Первый сигнал', topic: 'УСЛОВИЯ · ЦИКЛЫ', description: 'Датчик записал изменения высоты. Верни сумму только положительных чисел из списка numbers. Нули и отрицательные значения пропусти.', fn: 'positive_sum', signature: 'numbers', constraint: '0 ≤ len(numbers) ≤ 10 000', hint: 'Начни с total = 0. Пройди по списку и прибавляй число, если оно больше нуля.', tests: [{args:[[-2,4,1,-3,6]],expected:11},{args:[[-5,0,-1]],expected:0},{args:[[]],expected:0},{args:[[3,3,3]],expected:9},{args:[[1000000,-1000000,7]],expected:1000007}] },

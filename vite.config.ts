@@ -1,4 +1,5 @@
 import vinext from "vinext";
+import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite";
 import hostingConfig from "./.openai/hosting.json";
 import { readExecutionProfile } from "./scripts/execution-profile.mjs";
@@ -12,6 +13,7 @@ const { d1, r2 } = hostingConfig;
 // macOS Seatbelt blocks FSEvents, so Codex previews need polling for HMR.
 const isCodexSeatbeltSandbox = process.env.CODEX_SANDBOX === "seatbelt";
 const managedLinux = readExecutionProfile() === "managed-linux";
+const projectPath = fileURLToPath(new URL('.', import.meta.url)).replaceAll('\\', '/').replace(/\/$/, '');
 
 const localBindingConfig = {
   main: "vinext/server/fetch-handler",
@@ -52,8 +54,14 @@ export default defineConfig(async () => {
 
   return {
     server: {
+      strictPort: true,
+      fs: { deny: ['.env', '.env.*', '*.{crt,pem}', '**/.git/**', `${projectPath}/data/**`, '**/*.sqlite', '**/*.sqlite-*', `${projectPath}/server/**`] },
+      proxy: {
+        '/api/account': { target:'http://127.0.0.1:3001', changeOrigin:true },
+        '/ads.txt': { target:'http://127.0.0.1:3001', changeOrigin:true, rewrite: () => '/api/account/ads.txt' },
+      },
       ...(managedLinux ? { host: "0.0.0.0", allowedHosts: ["terminal.local"] } : {}),
-      ...(isCodexSeatbeltSandbox ? { watch: { useFsEvents: false, usePolling: true } } : {}),
+      watch: {ignored:['**/.next/**','**/.next-network/**','**/dist/**','**/data/**'],...(isCodexSeatbeltSandbox ? {useFsEvents:false,usePolling:true} : {})},
     },
     plugins: [
       vinext(),

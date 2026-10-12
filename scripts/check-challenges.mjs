@@ -3,6 +3,8 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { loadPyodide } from 'pyodide';
 import { challenges } from '../lib/challenges.ts';
+import {catalog} from './load-catalog.mjs';
+import {pythonFull} from '../tests/full-route-solutions.mjs';
 
 const py = await loadPyodide({ indexURL: path.resolve('node_modules/pyodide') });
 const harness = readFileSync('public/python-worker.mjs','utf8').match(/py\.runPython\(`([\s\S]*?)`\)/)[1];
@@ -25,8 +27,10 @@ const solutions = [
 ];
 function run(c,code){py.globals.set('_payload_json',JSON.stringify({fn:c.fn,tests:c.tests,code}));return JSON.parse(py.runPython(harness));}
 let tests=0;
-for(const [i,c] of challenges.entries()){
-  const r=run(c,solutions[i]);
+const allChallenges=[...challenges,...catalog.getChallenges('python','full')];
+const allSolutions=[...solutions,...pythonFull];
+for(const [i,c] of allChallenges.entries()){
+  const r=run(c,allSolutions[i]);
   assert.equal(r.error,null,`Challenge ${c.id}: ${r.error}`);
   assert.equal(r.results.every(x=>x.passed),true,`Challenge ${c.id}: ${JSON.stringify(r.results)}`);
   tests+=r.results.length;
@@ -36,4 +40,4 @@ assert(alternate.results.every(x=>x.passed));
 assert(run(challenges[0], 'def positive_sum(numbers):\n    return 999').results.every(x=>!x.passed));
 assert(run(challenges[0], 'def positive_sum(numbers)\n    pass').error.includes('SyntaxError'));
 assert(run(challenges[0], 'def positive_sum(numbers):\n    raise ValueError("test")').results.every(x=>!x.passed));
-console.log(`PASS: ${challenges.length} challenges, ${tests} cases, alternative implementation, wrong answer, syntax error, runtime error.`);
+console.log(`PASS: ${allChallenges.length} challenges, ${tests} cases, alternative implementation, wrong answer, syntax error, runtime error.`);

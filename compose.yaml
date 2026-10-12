@@ -1,0 +1,48 @@
+services:
+  web:
+    build:
+      context: .
+      target: web
+    restart: unless-stopped
+    expose: ["3000"]
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+  api:
+    build:
+      context: .
+      target: api
+    restart: unless-stopped
+    expose: ["3001"]
+    environment:
+      APP_ORIGIN: https://${DOMAIN:?Set DOMAIN}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:?Set ADMIN_USERNAME}
+      ADMIN_PASSWORD_HASH: ${ADMIN_PASSWORD_HASH:?Set ADMIN_PASSWORD_HASH}
+      OTP_SECRET: ${OTP_SECRET:?Set OTP_SECRET}
+      PROXY_TOKEN: ${PROXY_TOKEN:?Set PROXY_TOKEN}
+      MAIL_MODE: resend
+      RESEND_API_KEY: ${RESEND_API_KEY:?Set RESEND_API_KEY}
+      MAIL_FROM: ${MAIL_FROM:?Set MAIL_FROM}
+      JUDGE_URL: ${JUDGE_URL:-}
+      JUDGE_TOKEN: ${JUDGE_TOKEN:-}
+      APPLIXIR_WEBHOOK_SECRET: ${APPLIXIR_WEBHOOK_SECRET:-}
+    volumes:
+      - account_data:/data
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+  gateway:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports: ["80:80", "443:443", "443:443/udp"]
+    environment:
+      DOMAIN: ${DOMAIN:?Set DOMAIN}
+      PROXY_TOKEN: ${PROXY_TOKEN:?Set PROXY_TOKEN}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on: [web, api]
+    security_opt: ["no-new-privileges:true"]
+volumes:
+  account_data:
+  caddy_data:
+  caddy_config:

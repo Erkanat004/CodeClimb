@@ -1,0 +1,31 @@
+{$DOMAIN} {
+    encode zstd gzip
+    header {
+        Strict-Transport-Security "max-age=31536000"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        Referrer-Policy "strict-origin-when-cross-origin"
+        -Server
+    }
+    @accounts path /api/account/*
+    @adstxt path /ads.txt
+    handle @accounts {
+        request_body {
+            max_size 512KB
+        }
+        reverse_proxy api:3001 {
+            header_up X-Code-Climb-Proxy {$PROXY_TOKEN}
+            header_up X-Code-Climb-Client-IP {http.request.remote.host}
+        }
+    }
+    handle @adstxt {
+        rewrite * /api/account/ads.txt
+        reverse_proxy api:3001 {
+            header_up X-Code-Climb-Proxy {$PROXY_TOKEN}
+            header_up X-Code-Climb-Client-IP {http.request.remote.host}
+        }
+    }
+    handle {
+        reverse_proxy web:3000
+    }
+}

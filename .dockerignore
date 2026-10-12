@@ -1,0 +1,16 @@
+node_modules
+.git
+.env*
+data
+outputs
+.next
+.next-network
+.vinext
+.wrangler
+.sites-runtime
+.agents
+.codex
+dist
+*.sqlite*
+*.tar.gz
+tsconfig.tsbuildinfo

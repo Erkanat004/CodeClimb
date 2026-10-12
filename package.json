@@ -1,16 +1,25 @@
 {
-  "name": "site-creator-vinext-starter",
+  "name": "code-climb",
   "version": "0.1.0",
   "private": true,
   "engines": {
-    "node": ">=22.13.0"
+    "node": ">=24.0.0"
   },
   "scripts": {
+    "local": "node scripts/local.mjs",
+    "server": "node server/index.mjs",
+    "admin:hash": "node scripts/admin-password.mjs",
+    "test:accounts": "node --test tests/accounts.test.mjs tests/progress.test.mjs",
+    "test:python": "node scripts/check-challenges.mjs",
+    "test:cpp": "node scripts/check-cpp.mjs",
+    "db:backup": "node scripts/backup-db.mjs",
     "predev": "node scripts/prepare-runtimes.mjs",
     "prebuild": "node scripts/prepare-runtimes.mjs",
     "install:ci": "node scripts/install-ci.mjs",
     "dev": "node scripts/run-framework.mjs dev",
     "build": "node scripts/run-framework.mjs build",
+    "build:network": "node scripts/prepare-runtimes.mjs && node scripts/network.mjs build",
+    "start:network:web": "node scripts/network.mjs start",
     "start": "node --import ./scripts/sites-env.mjs ./node_modules/wrangler/bin/wrangler.js dev --config dist/server/wrangler.json --local --persist-to .wrangler/state --ip 127.0.0.1 --inspector-port 0",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "db:generate": "drizzle-kit generate"
@@ -18,6 +27,7 @@
   "dependencies": {
     "@base-ui/react": "^1.7.0",
     "@hookform/resolvers": "^5.7.1",
+    "@live-codes/clang-wasm": "^0.3.0",
     "@monaco-editor/react": "^4.7.0",
     "@shadcn/react": "^0.3.0",
     "class-variance-authority": "0.7.1",
@@ -29,13 +39,13 @@
     "input-otp": "^1.4.2",
     "lucide-react": "^1.31.0",
     "monaco-editor": "^0.57.0",
-    "next": "16.3.4",
+    "next": "16.4.0",
     "next-themes": "^0.4.6",
     "pyodide": "^314.0.7",
     "radix-ui": "^1.6.7",
-    "react": "19.2.6",
+    "react": "19.3.0",
     "react-day-picker": "^10.0.1",
-    "react-dom": "19.2.6",
+    "react-dom": "19.3.0",
     "react-hook-form": "^7.85.0",
     "react-resizable-panels": "^4.12.2",
     "recharts": "^3.8.0",
@@ -45,29 +55,30 @@
     "zod": "^3.25.76"
   },
   "devDependencies": {
-    "@cloudflare/vite-plugin": "1.37.1",
-    "@cloudflare/workers-types": "4.20260515.1",
+    "@cloudflare/vite-plugin": "1.63.1",
+    "@cloudflare/workers-types": "5.20261012.1",
     "@tailwindcss/postcss": "4.2.1",
     "@types/node": "22.19.19",
     "@types/react": "19.2.14",
     "@types/react-dom": "19.2.3",
     "@vitejs/plugin-react": "6.0.2",
-    "@vitejs/plugin-rsc": "0.5.26",
+    "@vitejs/plugin-rsc": "0.5.34",
     "drizzle-kit": "0.31.10",
     "eslint": "9.39.4",
-    "eslint-config-next": "16.3.4",
-    "react-server-dom-webpack": "19.2.6",
+    "eslint-config-next": "16.4.0",
+    "react-server-dom-webpack": "19.3.0",
     "tailwindcss": "4.2.1",
     "tw-animate-css": "^1.4.0",
     "typescript": "5.9.3",
-    "vinext": "1.0.0-beta.5",
-    "vite": "8.0.13",
-    "wrangler": "4.92.0"
+    "vinext": "1.1.0",
+    "vite": "8.3.4",
+    "wrangler": "4.149.0"
   },
   "type": "module",
   "overrides": {
+    "dompurify": "3.4.17",
     "miniflare": {
-      "sharp": "0.35.4"
+      "sharp": "0.35.5"
     }
   }
 }
