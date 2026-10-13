@@ -9,8 +9,10 @@ import { cppStarter, cppProgram } from '@/lib/cpp-challenges';
 import { startSandbox, type Language } from '@/lib/sandbox';
 import { AccountProvider, AccountButton, useAccount, accountRequest } from '@/components/account';
 import { RewardHint } from '@/components/reward-hint';
+import {LanguageSwitcher,useLanguage} from '@/lib/i18n';
+import {difficultyLabel,localizeChallenge} from '@/lib/challenge-translations';
 
-import { getChallenges, difficulties, difficultyLabels, type Difficulty } from '@/lib/catalog';
+import { getChallenges, difficulties, type Difficulty } from '@/lib/catalog';
 import {sameProgressContent} from '@/lib/progress';
 
 type Result = { results: { passed:boolean; actual:string; expected:string }[]; error?:string; stdout?:string; ms?:number };
@@ -34,14 +36,20 @@ function HomeContent() {
 }
 function Game({language,difficulty,changeLanguage,changeDifficulty}:{language:Language;difficulty:Difficulty;changeLanguage:(v:Language)=>void;changeDifficulty:(v:Difficulty)=>void}) {
   const {user,ready}=useAccount();
+  const {language:uiLanguage,t}=useLanguage();
   const STORE=difficulty==='classic'?(language==='python'?'code-climb-python-v2':'code-climb-cpp-v1'):`code-climb-${language}-${difficulty}-v1`;
   const progressPath=`progress/${language}/${difficulty}`;
   const label=language==='python'?'Python':'C++';
   const tasks=getChallenges(language,difficulty),count=tasks.length;
+  const displayTasks=tasks.map(task=>localizeChallenge(task,uiLanguage));
+  const difficultyName=(value:Difficulty)=>difficultyLabel(value,uiLanguage);
   const nodes=difficulty==='classic'?classicNodes:tasks.map((_,i)=>({id:i+1,x:classicNodes[Math.round(i*14/(count-1))].x,y:1680-i*1470/(count-1)}));
   const route=nodes.map((n,i)=>i?`V${n.y}H${n.x}`:`M${n.x},${n.y}`).join(' ');
   const altitude=(n:number)=>Math.round(n/count*8848);
-  const starterCode=language==='python'?starter:cppStarter;
+  const starterCode=(task:typeof tasks[number])=>{
+    const source=language==='python'?starter(task):cppStarter(task);
+    return uiLanguage==='en'?source.replace('Напиши своё решение здесь','Write your solution here').replace('Напиши решение. main() добавляется автоматически.','Write your solution. main() is added automatically.'):source;
+  };
   const displayValue=(v:unknown)=>language==='python'?pythonLiteral(v):JSON.stringify(v);
   const [hydrated,setHydrated] = useState(false);
   const [saveStatus,setSaveStatus]=useState('Загрузка прогресса…');
@@ -67,6 +75,7 @@ function Game({language,difficulty,changeLanguage,changeDifficulty}:{language:La
   const worker = useRef<{terminate:()=>void}|null>(null);
   const animation = useRef<number>(0);
   const challenge = tasks[selected];
+  const displayChallenge=displayTasks[selected];
   const current = nodes[Math.min(completed,count-1)];
   const code = drafts[selected] ?? starterCode(challenge);
   const busy = !hydrated || status==='loading' || status==='compiling' || status==='running' || moving;
@@ -90,8 +99,8 @@ function Game({language,difficulty,changeLanguage,changeDifficulty}:{language:La
         if(Number.isFinite(p.seconds)&&p.seconds>=0) setSeconds(Math.floor(p.seconds));
       }
       if(saved)lastSaved.current=JSON.stringify(p);
-      setSaveStatus(user?'Сохранено в SQLite':'Гостевой прогресс в браузере');setHydrated(true);
-    }catch{if(!active)return;if(user){setSaveStatus('Не удалось загрузить аккаунт. Обнови страницу; данные не перезаписаны.');}else{setSaveStatus('Гостевой режим без сохранения');setHydrated(true);}}
+      setSaveStatus(user?t('Прогресс сохранён','Progress saved'):t('Гостевой прогресс в браузере','Guest progress in this browser'));setHydrated(true);
+    }catch{if(!active)return;if(user){setSaveStatus(t('Не удалось загрузить аккаунт. Обнови страницу; данные не перезаписаны.','Could not load your account. Refresh the page; your data was not overwritten.'));}else{setSaveStatus(t('Гостевой режим без сохранения','Guest mode without saved progress'));setHydrated(true);}}
     }
     void load();
     return ()=>{active=false;worker.current?.terminate();cancelAnimationFrame(animation.current);};
@@ -103,9 +112,9 @@ function Game({language,difficulty,changeLanguage,changeDifficulty}:{language:La
     void Promise.resolve().then(()=>{
       if(!active)return;
       try{
-        if(localStorage.getItem(STORE)!==lastGuest.current){setHydrated(false);setSaveStatus('Прогресс изменён в другой вкладке. Скопируй черновик и обнови страницу.');return;}
+        if(localStorage.getItem(STORE)!==lastGuest.current){setHydrated(false);setSaveStatus(t('Прогресс изменён в другой вкладке. Скопируй черновик и обнови страницу.','Progress changed in another tab. Copy your draft and refresh this page.'));return;}
         const value=JSON.stringify(latest.current);localStorage.setItem(STORE,value);lastGuest.current=value;
-      }catch{setSaveStatus('Не удалось сохранить в браузере');}
+      }catch{setSaveStatus(t('Не удалось сохранить в браузере','Could not save in the browser'));}
     });
     return()=>{active=false;};
   },[hydrated,completed,drafts,avatar,seconds]);
@@ -113,12 +122,12 @@ function Game({language,difficulty,changeLanguage,changeDifficulty}:{language:La
     if(!user)return true;
     if(!hydrated||saving.current||failedSave.current)return false;
     const snapshot=JSON.stringify(latest.current);if(snapshot===lastSaved.current)return true;
-    saving.current=true;setSaveStatus('Сохранение…');
-    try{const p=await accountRequest(progressPath,'PUT',{data:JSON.parse(snapshot),revision:revision.current});revision.current=Number(p.revision);lastSaved.current=snapshot;const unchanged=sameProgressContent(JSON.stringify(latest.current),snapshot);setSaveStatus(unchanged?'Сохранено в SQLite':'Есть новые изменения — сохраняем…');return unchanged;}
-    catch(e){if((e as {status?:number}).status===409||(e as {status?:number}).status===401)failedSave.current=true;setSaveStatus(e instanceof Error?e.message:'Сохранение не удалось. Повторим автоматически.');return false;}
+    saving.current=true;setSaveStatus(t('Сохранение…','Saving…'));
+    try{const p=await accountRequest(progressPath,'PUT',{data:JSON.parse(snapshot),revision:revision.current});revision.current=Number(p.revision);lastSaved.current=snapshot;const unchanged=sameProgressContent(JSON.stringify(latest.current),snapshot);setSaveStatus(unchanged?t('Прогресс сохранён','Progress saved'):t('Есть новые изменения — сохраняем…','New changes — saving…'));return unchanged;}
+    catch(e){if((e as {status?:number}).status===409||(e as {status?:number}).status===401)failedSave.current=true;setSaveStatus(e instanceof Error?e.message:t('Сохранение не удалось. Повторим автоматически.','Save failed. We will retry automatically.'));return false;}
     finally{saving.current=false;}
   }
-  useEffect(()=>{if(!user||!hydrated)return;const id=setTimeout(()=>{setSaveStatus('Есть несохранённые изменения…');void saveAccount();},700);return()=>clearTimeout(id);},[hydrated,completed,drafts,avatar]);
+  useEffect(()=>{if(!user||!hydrated)return;const id=setTimeout(()=>{setSaveStatus(t('Есть несохранённые изменения…','Unsaved changes…'));void saveAccount();},700);return()=>clearTimeout(id);},[hydrated,completed,drafts,avatar]);
   useEffect(()=>{if(!user||!hydrated)return;const id=setInterval(()=>void saveAccount(),10000);return()=>clearInterval(id);},[hydrated]);
   useEffect(()=>{const warn=(e:BeforeUnloadEvent)=>{if(user&&hydrated&&!sameProgressContent(JSON.stringify(latest.current),lastSaved.current)){e.preventDefault();e.returnValue='';}};window.addEventListener('beforeunload',warn);return()=>window.removeEventListener('beforeunload',warn);},[hydrated]);
   useEffect(()=>{if(!hydrated||completed===count)return;const id=setInterval(()=>setSeconds(s=>s+1),1000);return()=>clearInterval(id);},[hydrated,completed]);
@@ -130,7 +139,7 @@ function Game({language,difficulty,changeLanguage,changeDifficulty}:{language:La
   }
   function stop() {
     worker.current?.terminate();worker.current=null;
-    setStatus('failed');setResult({results:[],error:'Выполнение остановлено. Прогресс не изменён.'});
+    setStatus('failed');setResult({results:[],error:t('Выполнение остановлено. Прогресс не изменён.','Execution stopped. Progress was not changed.')});
   }
   function advance(index:number) {
     if(index!==completed||completed>=count)return;
@@ -153,7 +162,7 @@ function Game({language,difficulty,changeLanguage,changeDifficulty}:{language:La
     if(busy)return;
     const index=selected;setStatus('loading');setResult(null);
     const tests=submit?challenge.tests:challenge.tests.slice(0,2);
-    if(code.length>30000){setStatus('failed');setResult({results:[],error:'Код длиннее 30 000 символов.'});return;}
+    if(code.length>30000){setStatus('failed');setResult({results:[],error:t('Код длиннее 30 000 символов.','Code exceeds 30,000 characters.')});return;}
     worker.current=startSandbox(language,{code:language==='cpp'?cppProgram(code,challenge,tests):code,fn:challenge.fn,tests},setStatus,data=>{
       worker.current=null;setResult(data);
       const passed=!data.error&&data.results.length===tests.length&&data.results.every(r=>r.passed);
@@ -165,56 +174,56 @@ function Game({language,difficulty,changeLanguage,changeDifficulty}:{language:La
   return <main className={`climb-app ${editorOpen?'with-editor':''}`}>
     <header className="topbar">
       <a className="wordmark" href="#" onClick={e=>{e.preventDefault();setOverview(v=>!v);}}><Mountain size={26}/><span>CODE<span className="wordmark-light">CLIMB</span></span></a>
-      <div className="top-center"><div className="language-switch" role="group" aria-label="Язык программирования"><button disabled={busy} aria-pressed={language==='python'} onClick={async()=>{if(await saveAccount())changeLanguage('python');}}>Python</button><button disabled={busy} aria-pressed={language==='cpp'} onClick={async()=>{if(await saveAccount())changeLanguage('cpp');}}>C++</button></div><span className="top-separator"/><span>THE ASCENT / 01</span></div>
-      <div className="top-actions"><button onClick={()=>setHelp(true)} aria-label="Как играть"><HelpCircle size={19}/></button><button className="account-button" disabled={busy} onClick={async()=>{if(await saveAccount())window.location.assign('/compete');}}>Соревнование</button>{user?.role==='admin'&&<button className="account-button" disabled={busy} onClick={async()=>{if(await saveAccount())window.location.assign('/admin');}}>Админка</button>}<AccountButton disabled={busy} beforeChange={saveAccount}/><button className="profile-toggle" onClick={()=>setProfile(true)} aria-label="Выбрать аватар"><Avatar kind={avatar}/><span>{user?.username??'you'}</span></button></div>
+      <div className="top-center"><div className="language-switch" role="group" aria-label={t('Язык программирования','Programming language')}><button disabled={busy} aria-pressed={language==='python'} onClick={async()=>{if(await saveAccount())changeLanguage('python');}}>Python</button><button disabled={busy} aria-pressed={language==='cpp'} onClick={async()=>{if(await saveAccount())changeLanguage('cpp');}}>C++</button></div><span className="top-separator"/><span>THE ASCENT / 01</span></div>
+      <div className="top-actions"><LanguageSwitcher/><button onClick={()=>setHelp(true)} aria-label={t('Как играть','How to play')}><HelpCircle size={19}/></button><button className="account-button" disabled={busy} onClick={async()=>{if(await saveAccount())window.location.assign('/compete');}}>{t('Соревнование','Competition')}</button>{user?.role==='admin'&&<button className="account-button" disabled={busy} onClick={async()=>{if(await saveAccount())window.location.assign('/admin');}}>{t('Админка','Admin')}</button>}<AccountButton disabled={busy} beforeChange={saveAccount}/><button className="profile-toggle" onClick={()=>setProfile(true)} aria-label={t('Выбрать аватар','Choose avatar')}><Avatar kind={avatar}/><span>{user?.username??'you'}</span></button></div>
     </header>
 
     <div className="difficulty-bar">
-      <label htmlFor="difficulty">Маршрут</label>
+      <label htmlFor="difficulty">{t('Маршрут','Route')}</label>
       <select id="difficulty" value={difficulty} disabled={busy} onChange={async e=>{const next=e.target.value as Difficulty;if(difficulties.includes(next)&&await saveAccount())changeDifficulty(next);}}>
-        {difficulties.map(d=><option key={d} value={d}>{difficultyLabels[d]}{d==='classic'||d==='full'?' · 15 уровней':''}</option>)}
+        {difficulties.map(d=><option key={d} value={d}>{difficultyName(d)}{d==='classic'||d==='full'?t(' · 15 уровней',' · 15 levels'):''}</option>)}
       </select>
-      <span>{count} задач · {difficulty==='full'?'5 лёгких + 5 средних + 5 сложных':difficulty==='classic'?'прежний прогресс сохранён':'свой маршрут и прогресс'}</span>
+      <span>{count} {t('задач','challenges')} · {difficulty==='full'?t('5 лёгких + 5 средних + 5 сложных','5 easy + 5 medium + 5 hard'):difficulty==='classic'?t('прежний прогресс сохранён','previous progress preserved'):t('свой маршрут и прогресс','separate route and progress')}</span>
     </div>
     <div className="play-layout">
-      {editorOpen && <aside className="workbench" aria-label={`Редактор ${label}`}>
-        <div className="workbench-title"><span><Code2 size={17}/> WORKSPACE</span><button aria-label="Свернуть редактор" onClick={()=>setEditorOpen(false)}><Minus size={18}/></button></div>
+      {editorOpen && <aside className="workbench" aria-label={t(`Редактор ${label}`,`${label} editor`)}>
+        <div className="workbench-title"><span><Code2 size={17}/> WORKSPACE</span><button aria-label={t('Свернуть редактор','Collapse editor')} onClick={()=>setEditorOpen(false)}><Minus size={18}/></button></div>
         <div className="brief">
-          <div className="checkpoint-meta"><span>CHECKPOINT {String(selected+1).padStart(2,'0')}</span><span>{selected<completed?'ПРОЙДЕН':language==='python'?'PYTHON 3':'C++20'}</span></div>
-          <h1>{challenge.title}</h1><p className="topic">{challenge.topic}</p>
-          <p className="description">{challenge.description}</p>
-          <div className="example"><span>ПРИМЕР</span><code>{challenge.fn}({challenge.tests[0].args.map(displayValue).join(', ')})</code><code className="expected">→ {displayValue(challenge.tests[0].expected)}</code></div>
-          <div className="constraint">{challenge.constraint}</div>
-          <button className="hint-toggle" onClick={()=>setHint(v=>!v)}>{hint?'− Скрыть подсказку':'+ Подсказка'}</button>
-          {hint&&<><p className="hint-text">{challenge.hint}</p><RewardHint key={`${language}-${challenge.id}`} language={language} taskId={challenge.id}/></>}
+          <div className="checkpoint-meta"><span>CHECKPOINT {String(selected+1).padStart(2,'0')}</span><span>{selected<completed?t('ПРОЙДЕН','CLEARED'):language==='python'?'PYTHON 3':'C++20'}</span></div>
+          <h1>{displayChallenge.title}</h1><p className="topic">{displayChallenge.topic}</p>
+          <p className="description">{displayChallenge.description}</p>
+          <div className="example"><span>{t('ПРИМЕР','EXAMPLE')}</span><code>{challenge.fn}({challenge.tests[0].args.map(displayValue).join(', ')})</code><code className="expected">→ {displayValue(challenge.tests[0].expected)}</code></div>
+          <div className="constraint">{displayChallenge.constraint}</div>
+          <button className="hint-toggle" onClick={()=>setHint(v=>!v)}>{hint?t('− Скрыть подсказку','− Hide hint'):t('+ Подсказка','+ Hint')}</button>
+          {hint&&<><p className="hint-text">{displayChallenge.hint}</p><RewardHint key={`${language}-${challenge.id}`} language={language} taskId={challenge.id}/></>}
         </div>
         <div className="file-tab"><span><i/> {language==='python'?'solution.py':'solution.cpp'}</span><span>UTF-8</span></div>
         <div className="code-pane">{hydrated&&<PythonEditor language={language} value={code} disabled={busy} onChange={v=>setDrafts(p=>({...p,[selected]:v}))}/>}</div>
         <div className={`console status-${status}`} aria-live="polite">
           <div className="console-heading"><span>CONSOLE</span><span>{result?.ms!==undefined?`${result.ms} ms`:`${label.toUpperCase()} / SANDBOX`}</span></div>
-          {status==='idle'&&<p><b>›</b> Готов к запуску. Верни ответ из функции.</p>}
-          {status==='loading'&&<p className="loading-text">Подключение {label}… {language==='cpp'?'При первом запуске загрузится около 30 МБ.':'Первый запуск займёт несколько секунд.'}</p>}
-          {status==='compiling'&&<p className="loading-text">Компиляция C++20…</p>}
-          {status==='running'&&<p className="loading-text">Выполнение тестов…</p>}
+          {status==='idle'&&<p><b>›</b> {t('Готов к запуску. Верни ответ из функции.','Ready to run. Return the answer from your function.')}</p>}
+          {status==='loading'&&<p className="loading-text">{t('Подключение','Loading')} {label}… {language==='cpp'?t('При первом запуске загрузится около 30 МБ.','The first run downloads about 30 MB.'):t('Первый запуск займёт несколько секунд.','The first run may take a few seconds.')}</p>}
+          {status==='compiling'&&<p className="loading-text">{t('Компиляция C++20…','Compiling C++20…')}</p>}
+          {status==='running'&&<p className="loading-text">{t('Выполнение тестов…','Running tests…')}</p>}
           {result?.error&&<pre>{result.error}</pre>}
-          {!!result?.results.length&&<><div className="test-dots">{result.results.map((r,i)=><span key={i} className={r.passed?'pass':'fail'} title={r.passed?'Пройден':'Ошибка'}>{String(i+1).padStart(2,'0')} {r.passed?'✓':'×'}</span>)}</div><p>{result.results.filter(r=>r.passed).length} / {result.results.length} тестов пройдено {moving?'· ПОДЪЁМ…':''}</p>{result.results.some(r=>!r.passed)&&<pre>Ожидалось: {result.results.find(r=>!r.passed)?.expected}{'\n'}Получено: {result.results.find(r=>!r.passed)?.actual}</pre>}</>}
+          {!!result?.results.length&&<><div className="test-dots">{result.results.map((r,i)=><span key={i} className={r.passed?'pass':'fail'} title={r.passed?t('Пройден','Passed'):t('Ошибка','Failed')}>{String(i+1).padStart(2,'0')} {r.passed?'✓':'×'}</span>)}</div><p>{result.results.filter(r=>r.passed).length} / {result.results.length} {t('тестов пройдено','tests passed')} {moving?t('· ПОДЪЁМ…','· CLIMBING…'):''}</p>{result.results.some(r=>!r.passed)&&<pre>{t('Ожидалось:','Expected:')} {result.results.find(r=>!r.passed)?.expected}{'\n'}{t('Получено:','Actual:')} {result.results.find(r=>!r.passed)?.actual}</pre>}</>}
           {result?.stdout&&<pre>{result.stdout}</pre>}
         </div>
-        <div className="runbar"><button className="icon-button" disabled={busy} aria-label="Сбросить код" onClick={()=>setDrafts(p=>({...p,[selected]:starterCode(challenge)}))}><RotateCcw size={16}/></button>{status==='loading'||status==='compiling'||status==='running'?<button className="run-button" onClick={stop}><Square size={13}/> СТОП</button>:<button className="run-button" onClick={()=>run(false)} disabled={busy}><Play size={14}/> RUN</button>}<button className="submit-button" onClick={()=>run(true)} disabled={busy}><Send size={14}/> SUBMIT <ChevronRight size={15}/></button></div>
-        <div className="local-note">Изолированный запуск · без сети и файлов компьютера</div>
+        <div className="runbar"><button className="icon-button" disabled={busy} aria-label={t('Сбросить код','Reset code')} onClick={()=>setDrafts(p=>({...p,[selected]:starterCode(challenge)}))}><RotateCcw size={16}/></button>{status==='loading'||status==='compiling'||status==='running'?<button className="run-button" onClick={stop}><Square size={13}/> {t('СТОП','STOP')}</button>:<button className="run-button" onClick={()=>run(false)} disabled={busy}><Play size={14}/> RUN</button>}<button className="submit-button" onClick={()=>run(true)} disabled={busy}><Send size={14}/> SUBMIT <ChevronRight size={15}/></button></div>
+        <div className="local-note">{t('Изолированный запуск · без сети и файлов компьютера','Isolated execution · no network or computer files')}</div>
         <div className="save-status" role="status">{saveStatus}</div>
       </aside>}
 
-      <section className={`arena ${overview?'overview':''}`} aria-label="Карта восхождения">
-        <svg className="cliff-world" viewBox={`0 ${cameraY} 1000 ${overview?1850:800}`} preserveAspectRatio={overview?'xMidYMid meet':'xMidYMid slice'} aria-label={`Маршрут из ${count} задач`}>
+      <section className={`arena ${overview?'overview':''}`} aria-label={t('Карта восхождения','Ascent map')}>
+        <svg className="cliff-world" viewBox={`0 ${cameraY} 1000 ${overview?1850:800}`} preserveAspectRatio={overview?'xMidYMid meet':'xMidYMid slice'} aria-label={t(`Маршрут из ${count} задач`,`${count}-challenge route`)}>
           <defs><linearGradient id="shade" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stopColor="#032837" stopOpacity=".05"/><stop offset="1" stopColor="#001c30" stopOpacity=".55"/></linearGradient></defs>
           <image href="/cliff.png" x="0" y="0" width="1000" height="1850" preserveAspectRatio="xMidYMid slice"/>
           <rect width="1000" height="1850" fill="url(#shade)"/>
-          {(difficulty==='classic'?[180,705,1230]:[180]).map((y,i)=><g key={y} className="round-boundary"><path d={`M-100 ${y+20} L140 ${y+10} L320 ${y+18} L520 ${y+5} L710 ${y+15} L1100 ${y}`} /><text x="70" y={y-6}>{difficulty==='classic'?`ROUND 0${3-i}`:difficultyLabels[difficulty].toUpperCase()}</text></g>)}
+          {(difficulty==='classic'?[180,705,1230]:[180]).map((y,i)=><g key={y} className="round-boundary"><path d={`M-100 ${y+20} L140 ${y+10} L320 ${y+18} L520 ${y+5} L710 ${y+15} L1100 ${y}`} /><text x="70" y={y-6}>{difficulty==='classic'?`ROUND 0${3-i}`:difficultyName(difficulty).toUpperCase()}</text></g>)}
           <path d={route} className="route-underlay"/><path d={route} className="route-future"/>
           {completed>0&&<path d={nodes.slice(0,Math.min(completed+1,count)).map((n,i)=>i?`V${n.y}H${n.x}`:`M${n.x},${n.y}`).join(' ')} className="route-done"/>}
-          {nodes.map((n,i)=><g key={n.id} className={`checkpoint ${i<completed?'cleared':i===completed?'active':'locked'}`} role="button" aria-label={`Уровень ${n.id}: ${tasks[i].title}${i>completed?', заблокирован':''}`} aria-disabled={i>completed||busy} tabIndex={i<=completed?0:-1} onClick={()=>select(i)} onKeyDown={e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();select(i);}}}>
-            <title>{`${n.id}. ${tasks[i].title}`}</title><rect x={n.x-23} y={n.y-23} width="46" height="46" fill="transparent"/><rect className="checkpoint-box" x={n.x-8} y={n.y-8} width="16" height="16"/>
+          {nodes.map((n,i)=><g key={n.id} className={`checkpoint ${i<completed?'cleared':i===completed?'active':'locked'}`} role="button" aria-label={t(`Уровень ${n.id}: ${displayTasks[i].title}${i>completed?', заблокирован':''}`,`Level ${n.id}: ${displayTasks[i].title}${i>completed?', locked':''}`)} aria-disabled={i>completed||busy} tabIndex={i<=completed?0:-1} onClick={()=>select(i)} onKeyDown={e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();select(i);}}}>
+            <title>{`${n.id}. ${displayTasks[i].title}`}</title><rect x={n.x-23} y={n.y-23} width="46" height="46" fill="transparent"/><rect className="checkpoint-box" x={n.x-8} y={n.y-8} width="16" height="16"/>
             <text x={n.x+27} y={n.y+5} className="node-label">{String(n.id).padStart(2,'0')}</text>
             {i<completed&&<path d={`m${n.x-4},${n.y} 3,3 5,-6`} className="node-tick"/>}
           </g>)}
@@ -224,22 +233,22 @@ function Game({language,difficulty,changeLanguage,changeDifficulty}:{language:La
         </svg>
         <div className="arena-shade"/>
         <div className="arena-top">
-          <div className="round-info"><span className="eyebrow">{label.toUpperCase()} · {difficultyLabels[difficulty].toUpperCase()}</span><h2>Round <span>{String(round).padStart(2,'0')}</span></h2><div className="round-segments">{[0,1,2,3,4].map(i=><i key={i} className={i<completed%5||completed===count?'filled':''}/>)}</div><p>Тренировка <span>· без рейтинга</span></p></div>
-          <button className="minimap" onClick={()=>setOverview(v=>!v)} title={overview?'Вернуться к игроку':'Показать всю гору'} aria-label={overview?'Вернуться к игроку':'Показать всю гору'}><Mountain/><span>{overview?'К ИГРОКУ':'ОБЗОР ГОРЫ'}</span></button>
+          <div className="round-info"><span className="eyebrow">{label.toUpperCase()} · {difficultyName(difficulty).toUpperCase()}</span><h2>{t('Раунд','Round')} <span>{String(round).padStart(2,'0')}</span></h2><div className="round-segments">{[0,1,2,3,4].map(i=><i key={i} className={i<completed%5||completed===count?'filled':''}/>)}</div><p>{t('Тренировка','Training')} <span>{t('· без рейтинга','· unranked')}</span></p></div>
+          <button className="minimap" onClick={()=>setOverview(v=>!v)} title={overview?t('Вернуться к игроку','Return to player'):t('Показать всю гору','Show the whole mountain')} aria-label={overview?t('Вернуться к игроку','Return to player'):t('Показать всю гору','Show the whole mountain')}><Mountain/><span>{overview?t('К ИГРОКУ','TO PLAYER'):t('ОБЗОР ГОРЫ','MOUNTAIN VIEW')}</span></button>
         </div>
-        <div className="arena-stats"><span><b>{altitude(completed).toLocaleString('ru-RU')}</b> м</span><i/><span>{completed}<small>/{count}</small><label>ПРОЙДЕНО</label></span><i/><span>{time}<label>ВРЕМЯ</label></span></div>
-        <div className="map-controls">{!editorOpen&&<button onClick={()=>setEditorOpen(true)} aria-label="Открыть редактор"><Code2 size={19}/></button>}<button onClick={()=>setOverview(false)} aria-label="Приблизить маршрут" disabled={!overview}><Plus size={19}/></button><button onClick={()=>setOverview(true)} aria-label="Показать всю гору" disabled={overview}><Minus size={19}/></button><button onClick={()=>setEditorOpen(v=>!v)} aria-label="Развернуть карту"><Maximize2 size={17}/></button></div>
-        <div className="stage-caption"><span>STAGE {String(Math.min(completed+1,count)).padStart(2,'0')} / {count}</span><strong>{completed===count?'SUMMIT REACHED':tasks[Math.min(completed,count-1)].title}</strong><button onClick={()=>select(Math.min(completed,count-1))} disabled={busy}>{completed===count?'Повторить задачу':'Открыть задачу'} <ChevronRight size={16}/></button></div>
-        {moving&&<div className="clear-message" role="status"><Flag size={24}/><span>CHECKPOINT CLEARED</span><small>Следующая высота…</small></div>}
-        <div className="map-bottom"><span>{user?'ЛОКАЛЬНАЯ БД · SQLITE':'ГОСТЕВОЙ РЕЖИМ'}</span><span>БЕЛЫЙ — МАРШРУТ <i className="key-yellow"/> ТЫ</span></div>
+        <div className="arena-stats"><span><b>{altitude(completed).toLocaleString(uiLanguage==='en'?'en-US':'ru-RU')}</b> {t('м','m')}</span><i/><span>{completed}<small>/{count}</small><label>{t('ПРОЙДЕНО','CLEARED')}</label></span><i/><span>{time}<label>{t('ВРЕМЯ','TIME')}</label></span></div>
+        <div className="map-controls">{!editorOpen&&<button onClick={()=>setEditorOpen(true)} aria-label={t('Открыть редактор','Open editor')}><Code2 size={19}/></button>}<button onClick={()=>setOverview(false)} aria-label={t('Приблизить маршрут','Zoom in')} disabled={!overview}><Plus size={19}/></button><button onClick={()=>setOverview(true)} aria-label={t('Показать всю гору','Show the whole mountain')} disabled={overview}><Minus size={19}/></button><button onClick={()=>setEditorOpen(v=>!v)} aria-label={t('Развернуть карту','Expand map')}><Maximize2 size={17}/></button></div>
+        <div className="stage-caption"><span>STAGE {String(Math.min(completed+1,count)).padStart(2,'0')} / {count}</span><strong>{completed===count?t('ВЕРШИНА ДОСТИГНУТА','SUMMIT REACHED'):displayTasks[Math.min(completed,count-1)].title}</strong><button onClick={()=>select(Math.min(completed,count-1))} disabled={busy}>{completed===count?t('Повторить задачу','Replay challenge'):t('Открыть задачу','Open challenge')} <ChevronRight size={16}/></button></div>
+        {moving&&<div className="clear-message" role="status"><Flag size={24}/><span>{t('ЭТАП ПРОЙДЕН','CHECKPOINT CLEARED')}</span><small>{t('Следующая высота…','Next altitude…')}</small></div>}
+        <div className="map-bottom"><span>{user?t('ПРОГРЕСС СОХРАНЯЕТСЯ','PROGRESS SAVED'):t('ГОСТЕВОЙ РЕЖИМ','GUEST MODE')}</span><span>{t('БЕЛЫЙ — МАРШРУТ','WHITE — ROUTE')} <i className="key-yellow"/> {t('ТЫ','YOU')}</span></div>
       </section>
 
-      <aside className="standings" aria-label="Тренировочный прогресс"><div className="standings-head"><Trophy size={17}/><span>TRAINING</span><small>СОЛО</small></div><div className="your-rank"><span>ТВОЙ ПРОГРЕСС</span><strong>{String(completed).padStart(2,'0')}<small>/{count}</small></strong></div><ol><li className="is-you"><span className="rank-no">01</span><Avatar kind={avatar}/><span className="racer"><b>{user?.username??'you'}</b><small>{label} · {difficultyLabels[difficulty]}</small></span><span className="racer-altitude">{altitude(completed).toLocaleString('ru-RU')}<small> м</small></span></li></ol><div className="summit-distance"><Flag size={19}/><span>ДО ВЕРШИНЫ<b>{(8848-altitude(completed)).toLocaleString('ru-RU')} м</b></span></div><p className="race-note">Тренировка разрешает вставку кода и подсказки. Для честной дуэли открой режим соревнования.</p><button className="restart-link" onClick={async()=>{if(await saveAccount())window.location.assign('/compete');}} disabled={busy}><Trophy size={13}/> Соревнование</button><button className="restart-link" onClick={()=>setReset(true)} disabled={busy}><RotateCcw size={13}/> Начать заново</button></aside>
+      <aside className="standings" aria-label={t('Тренировочный прогресс','Training progress')}><div className="standings-head"><Trophy size={17}/><span>TRAINING</span><small>{t('СОЛО','SOLO')}</small></div><div className="your-rank"><span>{t('ТВОЙ ПРОГРЕСС','YOUR PROGRESS')}</span><strong>{String(completed).padStart(2,'0')}<small>/{count}</small></strong></div><ol><li className="is-you"><span className="rank-no">01</span><Avatar kind={avatar}/><span className="racer"><b>{user?.username??'you'}</b><small>{label} · {difficultyName(difficulty)}</small></span><span className="racer-altitude">{altitude(completed).toLocaleString(uiLanguage==='en'?'en-US':'ru-RU')}<small> {t('м','m')}</small></span></li></ol><div className="summit-distance"><Flag size={19}/><span>{t('ДО ВЕРШИНЫ','TO SUMMIT')}<b>{(8848-altitude(completed)).toLocaleString(uiLanguage==='en'?'en-US':'ru-RU')} {t('м','m')}</b></span></div><p className="race-note">{t('Тренировка разрешает вставку кода и подсказки. Для честной дуэли открой режим соревнования.','Training allows paste and hints. Open competition mode for a fair duel.')}</p><button className="restart-link" onClick={async()=>{if(await saveAccount())window.location.assign('/compete');}} disabled={busy}><Trophy size={13}/> {t('Соревнование','Competition')}</button><button className="restart-link" onClick={()=>setReset(true)} disabled={busy}><RotateCcw size={13}/> {t('Начать заново','Start over')}</button></aside>
     </div>
 
-    <Dialog open={help} onOpenChange={setHelp}><DialogContent className="small-dialog"><DialogTitle>Как подняться на вершину</DialogTitle><DialogDescription>Выбери язык и сложность. В каждом новом наборе пять разных задач. Старый маршрут доступен отдельно; прогресс всех наборов независим.</DialogDescription><ol className="help-steps"><li>Нажми на текущий квадрат маршрута и прочитай задачу.</li><li>Напиши функцию любым подходящим способом. RUN запускает два примера. В C++ функция main не нужна.</li><li>SUBMIT проверяет все пять тестов. Верное решение поднимает твой аватар.</li></ol><p>Войди, чтобы сохранять решения в локальной SQLite. Без аккаунта прогресс остаётся в этом браузере; гостевые решения автоматически в аккаунт не переносятся.</p><p>Тренировка выполняется в браузерной песочнице без сети и файлов компьютера. Защищённая серверная проверка и запрет вставки включаются в режиме соревнования.</p><button className="submit-button" onClick={()=>setHelp(false)}>Понятно</button></DialogContent></Dialog>
-    <Dialog open={profile} onOpenChange={setProfile}><DialogContent className="small-dialog"><DialogTitle>Твой аватар</DialogTitle><DialogDescription>Выбери значок, по которому узнаешь себя на скале.</DialogDescription><div className="avatar-picker">{[0,1,2,3].map(n=><button key={n} onClick={()=>{setAvatar(n);setProfile(false);}} className={avatar===n?'chosen':''} aria-label={`Аватар ${n+1}`} aria-pressed={avatar===n}><Avatar kind={n}/></button>)}</div></DialogContent></Dialog>
-    <Dialog open={reset} onOpenChange={setReset}><DialogContent className="small-dialog"><DialogTitle>Начать восхождение заново?</DialogTitle><DialogDescription>Прогресс {label} · {difficultyLabels[difficulty]} и решения будут удалены {user?'из текущего аккаунта':'из этого браузера'}. Другие языки и уровни сложности не изменятся.</DialogDescription><div className="dialog-actions"><button className="run-button" onClick={()=>setReset(false)}>Отмена</button><button className="submit-button" onClick={resetRoute}>Начать заново</button></div></DialogContent></Dialog>
-    <Dialog open={summit} onOpenChange={setSummit}><DialogContent className="small-dialog summit-dialog"><Flag size={48}/><DialogTitle>SUMMIT REACHED</DialogTitle><DialogDescription>8 848 м · {label.toUpperCase()} CLIMB COMPLETED</DialogDescription><p>Все {count} задач пройдены.<br/>Время восхождения: {time}</p><button className="submit-button" onClick={()=>{setSummit(false);setOverview(true);}}>Посмотреть маршрут</button></DialogContent></Dialog>
+    <Dialog open={help} onOpenChange={setHelp}><DialogContent className="small-dialog"><DialogTitle>{t('Как подняться на вершину','How to reach the summit')}</DialogTitle><DialogDescription>{t('Выбери язык и сложность. В каждом новом наборе пять разных задач. Старый маршрут доступен отдельно; прогресс всех наборов независим.','Choose a language and difficulty. Each new set has five different challenges. The classic route is separate; progress is independent for each route.')}</DialogDescription><ol className="help-steps"><li>{t('Нажми на текущий квадрат маршрута и прочитай задачу.','Select the current checkpoint and read the challenge.')}</li><li>{t('Напиши функцию любым подходящим способом. RUN запускает два примера. В C++ функция main не нужна.','Write a function in any valid way. RUN checks two examples. C++ does not need a main function.')}</li><li>{t('SUBMIT проверяет все пять тестов. Верное решение поднимает твой аватар.','SUBMIT checks all five tests. A correct solution moves your avatar higher.')}</li></ol><p>{t('Войди, чтобы сохранять решения в аккаунте. Без аккаунта прогресс остаётся в этом браузере; гостевые решения автоматически в аккаунт не переносятся.','Sign in to save solutions to your account. Without an account, progress stays in this browser; guest solutions are not automatically imported.')}</p><p>{t('Тренировка выполняется в браузерной песочнице без сети и файлов компьютера. Защищённая серверная проверка и запрет вставки включаются в режиме соревнования.','Training runs in a browser sandbox without access to the network or your files. Competition uses server-side checking and disables pasting.')}</p><button className="submit-button" onClick={()=>setHelp(false)}>{t('Понятно','Got it')}</button></DialogContent></Dialog>
+    <Dialog open={profile} onOpenChange={setProfile}><DialogContent className="small-dialog"><DialogTitle>{t('Твой аватар','Your avatar')}</DialogTitle><DialogDescription>{t('Выбери значок, по которому узнаешь себя на скале.','Choose the icon that marks you on the mountain.')}</DialogDescription><div className="avatar-picker">{[0,1,2,3].map(n=><button key={n} onClick={()=>{setAvatar(n);setProfile(false);}} className={avatar===n?'chosen':''} aria-label={t(`Аватар ${n+1}`,`Avatar ${n+1}`)} aria-pressed={avatar===n}><Avatar kind={n}/></button>)}</div></DialogContent></Dialog>
+    <Dialog open={reset} onOpenChange={setReset}><DialogContent className="small-dialog"><DialogTitle>{t('Начать восхождение заново?','Start the ascent again?')}</DialogTitle><DialogDescription>{t('Прогресс','Progress')} {label} · {difficultyName(difficulty)} {t('и решения будут удалены','and solutions will be deleted')} {user?t('из текущего аккаунта','from this account'):t('из этого браузера','from this browser')}. {t('Другие языки и уровни сложности не изменятся.','Other languages and difficulty routes will remain unchanged.')}</DialogDescription><div className="dialog-actions"><button className="run-button" onClick={()=>setReset(false)}>{t('Отмена','Cancel')}</button><button className="submit-button" onClick={resetRoute}>{t('Начать заново','Start over')}</button></div></DialogContent></Dialog>
+    <Dialog open={summit} onOpenChange={setSummit}><DialogContent className="small-dialog summit-dialog"><Flag size={48}/><DialogTitle>{t('ВЕРШИНА ДОСТИГНУТА','SUMMIT REACHED')}</DialogTitle><DialogDescription>8,848 {t('м','m')} · {label.toUpperCase()} CLIMB COMPLETED</DialogDescription><p>{t('Все','All')} {count} {t('задач пройдены.','challenges cleared.')}<br/>{t('Время восхождения:','Ascent time:')} {time}</p><button className="submit-button" onClick={()=>{setSummit(false);setOverview(true);}}>{t('Посмотреть маршрут','View route')}</button></DialogContent></Dialog>
   </main>;
 }

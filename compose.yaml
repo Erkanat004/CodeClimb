@@ -25,6 +25,9 @@ services:
       JUDGE_URL: ${JUDGE_URL:-}
       JUDGE_TOKEN: ${JUDGE_TOKEN:-}
       APPLIXIR_WEBHOOK_SECRET: ${APPLIXIR_WEBHOOK_SECRET:-}
+      DB_DRIVER: ${DB_DRIVER:-}
+      DATABASE_URL: ${DATABASE_URL:-}
+      DB_CONFIG_KEY: ${DB_CONFIG_KEY:-}
     volumes:
       - account_data:/data
     cap_drop: ["ALL"]

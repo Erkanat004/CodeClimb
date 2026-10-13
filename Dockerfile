@@ -19,8 +19,9 @@ CMD ["node", "server.js"]
 FROM node:24-bookworm-slim AS api
 WORKDIR /app
 ENV NODE_ENV=production CODE_CLIMB_PUBLIC=1 ACCOUNT_HOST=0.0.0.0 ACCOUNT_PORT=3001 SQLITE_PATH=/data/code-climb.sqlite
+COPY package.json package-lock.json .npmrc ./
+RUN npm ci --omit=dev
 COPY --chown=node:node server ./server
-COPY package.json ./
 RUN mkdir /data && chown node:node /data
 USER node
 EXPOSE 3001

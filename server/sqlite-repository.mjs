@@ -20,6 +20,7 @@ export function createSqliteRepository(filename) {
   }
   db.exec('PRAGMA optimize');
   return {
+    driver:'sqlite',
     ...featureRepository(db),
     async findUser(username){return db.prepare('SELECT * FROM users WHERE username=?').get(username)??null;},
     async findEmail(email){return db.prepare('SELECT id FROM users WHERE email=?').get(email)??null;},
@@ -127,6 +128,15 @@ export function createSqliteRepository(filename) {
         else db.prepare('INSERT INTO course_progress VALUES (?,?,?,?,?,?) ON CONFLICT(user_id,language,difficulty) DO UPDATE SET data=excluded.data,revision=excluded.revision,updated_at=excluded.updated_at').run(userId,language,difficulty,JSON.stringify(data),next,Date.now());
         db.exec('COMMIT');return next;
       }catch(e){db.exec('ROLLBACK');throw e;}
+    },
+    async exportSnapshot(){
+      const tables=['users','progress','course_progress','full_progress','app_settings','admin_audit','hint_unlocks','ad_attempts','ad_transactions','duels','duel_players','duel_submissions'];
+      db.exec('BEGIN IMMEDIATE');
+      try{
+        if(db.prepare("SELECT 1 FROM duels WHERE status IN ('waiting','active') LIMIT 1").get())throw Error('Finish active duels before database migration.');
+        const snapshot=Object.fromEntries(tables.map(table=>[table,db.prepare(`SELECT * FROM ${table}`).all()]));
+        db.exec('COMMIT');return snapshot;
+      }catch(error){db.exec('ROLLBACK');throw error;}
     },
     async close(){db.close();},
   };

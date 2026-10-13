@@ -3,7 +3,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "CODE CLIMB — Python & C++",
-  description: "Решай задачи Python и C++ и поднимайся по скале к вершине. Изолированный запуск кода и 15 уровней для каждого языка.",
+  description: "Решай задачи Python и C++ и поднимайся к вершине. Solve Python and C++ challenges on your way to the summit — 15 levels per route.",
   icons: { icon: "/favicon.svg", shortcut: "/favicon.svg" },
 };
 

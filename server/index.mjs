@@ -12,10 +12,10 @@ if(!/^[a-z0-9_]{3,24}$/.test(adminUsername))throw Error('Invalid ADMIN_USERNAME.
 if(adminHash&&!/^scrypt-v1:[a-f0-9]{32}:[a-f0-9]{64}$/.test(adminHash))throw Error('ADMIN_PASSWORD_HASH must be a valid scrypt hash.');
 if(publicMode&&(!adminHash||!process.env.APP_ORIGIN||(process.env.OTP_SECRET??'').length<32))throw Error('Configure APP_ORIGIN, stable OTP_SECRET and ADMIN_PASSWORD_HASH before public launch.');
 const mailer=createMailer({mode:process.env.MAIL_MODE??'disabled',apiKey:process.env.RESEND_API_KEY,from:process.env.MAIL_FROM,outbox:process.env.MAIL_PREVIEW_DIR,production:publicMode});
-const repository=await createRepository();
+const repository=await createRepository({publicMode});
 if(adminHash)await repository.bootstrapAdmin(adminUsername,adminHash);
 const judge=createJudgeClient({url:process.env.JUDGE_URL,token:process.env.JUDGE_TOKEN});
-const server=await createAccountServer({repository,origin:process.env.APP_ORIGIN??'http://localhost:5173',publicMode,proxyToken:process.env.PROXY_TOKEN,otpSecret:process.env.OTP_SECRET,mailer,adminUsername,judge,adSecret:process.env.APPLIXIR_WEBHOOK_SECRET??''});
+const server=await createAccountServer({repository,origin:process.env.APP_ORIGIN??'http://localhost:5173',publicMode,proxyToken:process.env.PROXY_TOKEN,otpSecret:process.env.OTP_SECRET,mailer,adminUsername,judge,adSecret:process.env.APPLIXIR_WEBHOOK_SECRET??'',dbConfigSecret:process.env.DB_CONFIG_KEY??''});
 const port=Number(process.env.ACCOUNT_PORT??3001);
 if(!Number.isInteger(port)||port<1||port>65535)throw Error('Invalid ACCOUNT_PORT.');
 const host=publicMode?(process.env.ACCOUNT_HOST??'127.0.0.1'):'127.0.0.1';

@@ -5,6 +5,7 @@ import { hashPassword,verifyPassword,hashToken,sessionToken,cookie,newToken,veri
 import { createMailer } from './mail.mjs';
 import {createJudgeClient} from './judge-client.mjs';
 import {featureRoutes} from './feature-routes.mjs';
+import {createDatabaseAdmin} from './database-admin.mjs';
 
 const EMPTY={completed:0,drafts:{},avatar:0,seconds:0};
 class HttpError extends Error{constructor(status,message){super(message);this.status=status;}}
@@ -22,7 +23,7 @@ async function body(req,max=500000){
 }
 export async function createAccountServer({
   repository,origin='http://localhost:5173',publicMode=false,proxyToken='',otpSecret,
-  mailer=createMailer(),adminUsername='admin996',nowFn=Date.now,judge=createJudgeClient(),adSecret='',
+  mailer=createMailer(),adminUsername='admin996',nowFn=Date.now,judge=createJudgeClient(),adSecret='',dbConfigSecret='',
 }){
   const expected=new URL(origin);
   if(expected.origin!==origin||expected.username||expected.password)throw Error('APP_ORIGIN must be an exact origin without paths or credentials.');
@@ -32,7 +33,14 @@ export async function createAccountServer({
   otpSecret??=newToken();
   const dummy=await hashPassword('not-an-account-'+randomUUID());let hashing=0;
   const secure=publicMode;
+  let activeRequests=0,maintenance=false;
+  const drainWaiters=new Set();
+  const databaseAdmin=createDatabaseAdmin({repository,configSecret:dbConfigSecret,publicMode,freeze:()=>{
+    maintenance=true;
+    return {waitForDrain:()=>activeRequests===0?Promise.resolve():new Promise(resolve=>drainWaiters.add(resolve)),unfreeze:()=>{maintenance=false;}};
+  }});
   const server=createServer(async(req,res)=>{
+    activeRequests++;
     res.setHeader('Content-Type','application/json; charset=utf-8');res.setHeader('Cache-Control','no-store');res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('Content-Security-Policy',"default-src 'none'; frame-ancestors 'none'");
     const send=(status,data,type='application/json; charset=utf-8')=>{
       res.setHeader('Content-Type',type);
@@ -45,6 +53,7 @@ export async function createAccountServer({
         if(host!==expected.host||!sameHash(hashToken(String(req.headers['x-code-climb-proxy']??'')),hashToken(proxyToken)))throw new HttpError(403,'Недопустимый адрес сервера.');
       }else if(!/^(localhost|127\.0\.0\.1):\d+$/.test(host))throw new HttpError(403,'Недопустимый адрес сервера.');
       const parsed=new URL(req.url,'http://localhost'),route=parsed.pathname;
+      if(maintenance&&!(route==='/api/account/admin/database'&&req.method==='GET'))throw new HttpError(503,'Перенос базы данных: игра временно недоступна.');
       if(!route.startsWith('/api/account/'))throw new HttpError(404,'Не найдено.');
       if(!['GET','POST','PUT'].includes(req.method))throw new HttpError(405,'Метод не поддерживается.');
       if(req.method!=='GET'&&(req.headers.origin!==origin||req.headers['x-code-climb']!=='1'))throw new HttpError(403,'Запрос с другого сайта запрещён.');
@@ -119,7 +128,22 @@ export async function createAccountServer({
       if(route.startsWith('/api/account/admin/')){
         if(!user)throw new HttpError(401,'Войди в аккаунт администратора.');
         if(user.role!=='admin')throw new HttpError(403,'Доступ только для администратора.');
-        if(route==='/api/account/admin/overview'&&req.method==='GET'){send(200,{...await repository.adminOverview(now),mailMode:mailer.mode,publicMode});return;}
+        if(route==='/api/account/admin/overview'&&req.method==='GET'){send(200,{...await repository.adminOverview(now),mailMode:mailer.mode,publicMode,database:repository.driver});return;}
+        if(route==='/api/account/admin/database'&&req.method==='GET'){send(200,databaseAdmin.status());return;}
+        if(route==='/api/account/admin/database/test'&&req.method==='POST'){
+          await limit('admin-db-test:'+user.id,10,3600000);
+          const p=await body(req,4096);
+          if(typeof p.url!=='string')throw new HttpError(400,'Укажи PostgreSQL URL.');
+          try{send(200,{ok:true,...await databaseAdmin.test(p.url)});}catch{throw new HttpError(400,'Не удалось подключиться к PostgreSQL. Проверь адрес, TLS и права доступа.');}
+          return;
+        }
+        if(route==='/api/account/admin/database/migrate'&&req.method==='POST'){
+          await limit('admin-db-migrate:'+user.id,3,3600000);
+          const p=await body(req,4096);
+          if(typeof p.url!=='string'||p.confirm!=='MIGRATE')throw new HttpError(400,'Укажи PostgreSQL URL и подтверждение MIGRATE.');
+          try{send(202,databaseAdmin.start(p.url));}catch(error){throw new HttpError(409,String(error.message).includes('URL')?'Некорректный адрес PostgreSQL.':error.message);}
+          return;
+        }
         if(route==='/api/account/admin/users'&&req.method==='GET'){
           const offset=Number(parsed.searchParams.get('offset')??0),search=(parsed.searchParams.get('q')??'').trim();
           if(!Number.isInteger(offset)||offset<0||offset>1000000||search.length>100)throw new HttpError(400,'Некорректный поиск.');
@@ -148,6 +172,7 @@ export async function createAccountServer({
       }
       throw new HttpError(404,'Не найдено.');
     }catch(e){const status=e instanceof HttpError?e.status:500;if(status===500)console.error('Account service request failed:',e.code??e.name);if(!res.headersSent)send(status,{error:status===500?'Ошибка сервера. Повтори попытку.':e.message});}
+    finally{activeRequests--;if(activeRequests===0){for(const resolve of drainWaiters)resolve();drainWaiters.clear();}}
   });
   server.requestTimeout=15000;server.headersTimeout=10000;server.maxHeadersCount=40;server.maxConnections=128;
   const cleanup=setInterval(()=>repository.cleanup(nowFn()).catch(()=>{}),60000);cleanup.unref();

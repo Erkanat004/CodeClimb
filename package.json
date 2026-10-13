@@ -10,6 +10,7 @@
     "server": "node server/index.mjs",
     "admin:hash": "node scripts/admin-password.mjs",
     "test:accounts": "node --test tests/accounts.test.mjs tests/progress.test.mjs",
+    "test:postgres": "node --test tests/postgres.test.mjs",
     "test:python": "node scripts/check-challenges.mjs",
     "test:cpp": "node scripts/check-cpp.mjs",
     "db:backup": "node scripts/backup-db.mjs",
@@ -41,6 +42,7 @@
     "monaco-editor": "^0.57.0",
     "next": "16.4.0",
     "next-themes": "^0.4.6",
+    "pg": "8.23.1",
     "pyodide": "^314.0.7",
     "radix-ui": "^1.6.7",
     "react": "19.3.0",
@@ -57,6 +59,7 @@
   "devDependencies": {
     "@cloudflare/vite-plugin": "1.63.1",
     "@cloudflare/workers-types": "5.20261012.1",
+    "@electric-sql/pglite": "0.5.9",
     "@tailwindcss/postcss": "4.2.1",
     "@types/node": "22.19.19",
     "@types/react": "19.2.14",
