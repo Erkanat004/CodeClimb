@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from 'react';
-import { ChevronRight, Code2, Flag, HelpCircle, Maximize2, Minus, Mountain, Play, Plus, RotateCcw, Send, Square, Trophy } from 'lucide-react';
+import { ChevronRight, Code2, Flag, HelpCircle, Maximize2, Minimize2, Minus, Mountain, Play, Plus, RotateCcw, Send, Square, Trophy } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import PythonEditor from '@/components/python-editor';
 import { nodes as classicNodes, pythonLiteral, starter } from '@/lib/challenges';
@@ -62,6 +62,7 @@ function Game({language,difficulty,changeLanguage,changeDifficulty}:{language:La
   const [seconds,setSeconds] = useState(0);
   const [avatar,setAvatar] = useState(0);
   const [editorOpen,setEditorOpen] = useState(true);
+  const [terminalExpanded,setTerminalExpanded] = useState(false);
   const [overview,setOverview] = useState(false);
   const [help,setHelp] = useState(false);
   const [profile,setProfile] = useState(false);
@@ -70,6 +71,10 @@ function Game({language,difficulty,changeLanguage,changeDifficulty}:{language:La
   const [hint,setHint] = useState(false);
   const [status,setStatus] = useState<Status>('idle');
   const [result,setResult] = useState<Result|null>(null);
+  const [resultCheckpoint,setResultCheckpoint] = useState<number|null>(null);
+  const [terminalCommand,setTerminalCommand] = useState('submit');
+  const [lastCommand,setLastCommand] = useState<string|null>(null);
+  const [commandError,setCommandError] = useState('');
   const [moving,setMoving] = useState(false);
   const [position,setPosition] = useState(nodes[0]);
   const worker = useRef<{terminate:()=>void}|null>(null);
@@ -134,8 +139,8 @@ function Game({language,difficulty,changeLanguage,changeDifficulty}:{language:La
 
   function select(index:number) {
     if(busy||index>completed)return;
-    setSelected(index); setEditorOpen(true); setResult(null); setStatus('idle'); setHint(false);
-    if(window.innerWidth<=820) requestAnimationFrame(()=>document.querySelector('.workbench')?.scrollIntoView({behavior:'smooth',block:'start'}));
+    setSelected(index); setEditorOpen(true); setResult(null); setResultCheckpoint(null); setStatus('idle'); setHint(false); setLastCommand(null); setCommandError('');
+    if(window.innerWidth<=820) requestAnimationFrame(()=>document.querySelector('.challenge-card')?.scrollIntoView({behavior:'smooth',block:'start'}));
   }
   function stop() {
     worker.current?.terminate();worker.current=null;
@@ -154,13 +159,13 @@ function Game({language,difficulty,changeLanguage,changeDifficulty}:{language:La
       const t=Math.min(1,(now-startTime)/(reduced?1:900));const distance=t*length;
       setPosition({...to,x:distance<=vertical?from.x:from.x+Math.sign(to.x-from.x)*(distance-vertical),y:distance<=vertical?from.y-distance:to.y});
       if(t<1)animation.current=requestAnimationFrame(frame);
-      else{setCompleted(index+1);setSelected(index+1);setMoving(false);setStatus('idle');setResult(null);setHint(false);}
+      else{setCompleted(index+1);setSelected(index+1);setMoving(false);setHint(false);}
     }
     animation.current=requestAnimationFrame(frame);
   }
   function run(submit:boolean) {
     if(busy)return;
-    const index=selected;setStatus('loading');setResult(null);
+    const index=selected;setStatus('loading');setResult(null);setResultCheckpoint(index+1);setLastCommand(submit?'submit':'run');setCommandError('');
     const tests=submit?challenge.tests:challenge.tests.slice(0,2);
     if(code.length>30000){setStatus('failed');setResult({results:[],error:t('Код длиннее 30 000 символов.','Code exceeds 30,000 characters.')});return;}
     worker.current=startSandbox(language,{code:language==='cpp'?cppProgram(code,challenge,tests):code,fn:challenge.fn,tests},setStatus,data=>{
@@ -169,9 +174,15 @@ function Game({language,difficulty,changeLanguage,changeDifficulty}:{language:La
       setStatus(passed?'passed':'failed');if(passed&&submit)advance(index);
     });
   }
-  function resetRoute(){stop();setCompleted(0);setSelected(0);setPosition(nodes[0]);setDrafts({});setSeconds(0);setResult(null);setStatus('idle');setReset(false);setSummit(false);setOverview(false);}
+  function executeTerminalCommand() {
+    const command=terminalCommand.trim().toLowerCase();
+    if(command==='run')run(false);
+    else if(command==='submit')run(true);
+    else setCommandError(t('Команды: run или submit.','Commands: run or submit.'));
+  }
+  function resetRoute(){stop();setCompleted(0);setSelected(0);setPosition(nodes[0]);setDrafts({});setSeconds(0);setResult(null);setResultCheckpoint(null);setStatus('idle');setReset(false);setSummit(false);setOverview(false);}
 
-  return <main className={`climb-app ${editorOpen?'with-editor':''}`}>
+  return <main className={`climb-app ${editorOpen?'with-editor':''} ${terminalExpanded?'terminal-expanded':''}`}>
     <header className="topbar">
       <a className="wordmark" href="#" onClick={e=>{e.preventDefault();setOverview(v=>!v);}}><Mountain size={26}/><span>CODE<span className="wordmark-light">CLIMB</span></span></a>
       <div className="top-center"><div className="language-switch" role="group" aria-label={t('Язык программирования','Programming language')}><button disabled={busy} aria-pressed={language==='python'} onClick={async()=>{if(await saveAccount())changeLanguage('python');}}>Python</button><button disabled={busy} aria-pressed={language==='cpp'} onClick={async()=>{if(await saveAccount())changeLanguage('cpp');}}>C++</button></div><span className="top-separator"/><span>THE ASCENT / 01</span></div>
@@ -186,9 +197,7 @@ function Game({language,difficulty,changeLanguage,changeDifficulty}:{language:La
       <span>{count} {t('задач','challenges')} · {difficulty==='full'?t('5 лёгких + 5 средних + 5 сложных','5 easy + 5 medium + 5 hard'):difficulty==='classic'?t('прежний прогресс сохранён','previous progress preserved'):t('свой маршрут и прогресс','separate route and progress')}</span>
     </div>
     <div className="play-layout">
-      {editorOpen && <aside className="workbench" aria-label={t(`Редактор ${label}`,`${label} editor`)}>
-        <div className="workbench-title"><span><Code2 size={17}/> WORKSPACE</span><button aria-label={t('Свернуть редактор','Collapse editor')} onClick={()=>setEditorOpen(false)}><Minus size={18}/></button></div>
-        <div className="brief">
+      {editorOpen && <aside className="challenge-card brief" aria-label={t('Текущая задача','Current challenge')}>
           <div className="checkpoint-meta"><span>CHECKPOINT {String(selected+1).padStart(2,'0')}</span><span>{selected<completed?t('ПРОЙДЕН','CLEARED'):language==='python'?'PYTHON 3':'C++20'}</span></div>
           <h1>{displayChallenge.title}</h1><p className="topic">{displayChallenge.topic}</p>
           <p className="description">{displayChallenge.description}</p>
@@ -196,18 +205,29 @@ function Game({language,difficulty,changeLanguage,changeDifficulty}:{language:La
           <div className="constraint">{displayChallenge.constraint}</div>
           <button className="hint-toggle" onClick={()=>setHint(v=>!v)}>{hint?t('− Скрыть подсказку','− Hide hint'):t('+ Подсказка','+ Hint')}</button>
           {hint&&<><p className="hint-text">{displayChallenge.hint}</p><RewardHint key={`${language}-${challenge.id}`} language={language} taskId={challenge.id}/></>}
-        </div>
-        <div className="file-tab"><span><i/> {language==='python'?'solution.py':'solution.cpp'}</span><span>UTF-8</span></div>
-        <div className="code-pane">{hydrated&&<PythonEditor language={language} value={code} disabled={busy} onChange={v=>setDrafts(p=>({...p,[selected]:v}))}/>}</div>
-        <div className={`console status-${status}`} aria-live="polite">
-          <div className="console-heading"><span>CONSOLE</span><span>{result?.ms!==undefined?`${result.ms} ms`:`${label.toUpperCase()} / SANDBOX`}</span></div>
+      </aside>}
+      {editorOpen && <aside className={`workbench terminal-window ${terminalExpanded?'expanded':''}`} aria-label={t(`Терминал ${label}`,`${label} terminal`)}>
+        <div className="workbench-title"><span><Code2 size={17}/> TERMINAL <small>{t('КОД + ВЫВОД','CODE + OUTPUT')}</small></span><div className="terminal-title-actions"><button aria-label={terminalExpanded?t('Уменьшить терминал','Shrink terminal'):t('Увеличить терминал','Expand terminal')} onClick={()=>setTerminalExpanded(v=>!v)}>{terminalExpanded?<Minimize2 size={17}/>:<Maximize2 size={17}/>}</button><button aria-label={t('Свернуть редактор','Collapse editor')} onClick={()=>setEditorOpen(false)}><Minus size={18}/></button></div></div>
+        <div className="terminal-main">
+          <div className="terminal-code">
+            <div className="file-tab"><span><i/> {language==='python'?'solution.py':'solution.cpp'}</span><span>Ctrl+Enter → SUBMIT</span></div>
+            <div className="code-pane">{hydrated&&<PythonEditor language={language} value={code} disabled={busy} onChange={v=>setDrafts(p=>({...p,[selected]:v}))} onSubmit={()=>run(true)}/>}</div>
+          </div>
+          <div className="terminal-output">
+            <div className={`console status-${status}`} aria-live="polite">
+          <div className="console-heading"><span>CONSOLE{resultCheckpoint!==null&&` · CHECKPOINT ${String(resultCheckpoint).padStart(2,'0')}`}</span><span>{result?.ms!==undefined?`${result.ms} ms`:`${label.toUpperCase()} / SANDBOX`}</span></div>
+          {lastCommand&&<p className="console-command"><b>›</b> {lastCommand}</p>}
           {status==='idle'&&<p><b>›</b> {t('Готов к запуску. Верни ответ из функции.','Ready to run. Return the answer from your function.')}</p>}
           {status==='loading'&&<p className="loading-text">{t('Подключение','Loading')} {label}… {language==='cpp'?t('При первом запуске загрузится около 30 МБ.','The first run downloads about 30 MB.'):t('Первый запуск займёт несколько секунд.','The first run may take a few seconds.')}</p>}
           {status==='compiling'&&<p className="loading-text">{t('Компиляция C++20…','Compiling C++20…')}</p>}
           {status==='running'&&<p className="loading-text">{t('Выполнение тестов…','Running tests…')}</p>}
+          {commandError&&<pre>{commandError}</pre>}
           {result?.error&&<pre>{result.error}</pre>}
-          {!!result?.results.length&&<><div className="test-dots">{result.results.map((r,i)=><span key={i} className={r.passed?'pass':'fail'} title={r.passed?t('Пройден','Passed'):t('Ошибка','Failed')}>{String(i+1).padStart(2,'0')} {r.passed?'✓':'×'}</span>)}</div><p>{result.results.filter(r=>r.passed).length} / {result.results.length} {t('тестов пройдено','tests passed')} {moving?t('· ПОДЪЁМ…','· CLIMBING…'):''}</p>{result.results.some(r=>!r.passed)&&<pre>{t('Ожидалось:','Expected:')} {result.results.find(r=>!r.passed)?.expected}{'\n'}{t('Получено:','Actual:')} {result.results.find(r=>!r.passed)?.actual}</pre>}</>}
+          {!!result?.results.length&&<><p>{result.results.filter(r=>r.passed).length} / {result.results.length} {t('тестов пройдено','tests passed')} {moving?t('· ПОДЪЁМ…','· CLIMBING…'):''}</p><div className="console-results">{result.results.map((r,i)=><div key={i} className={r.passed?'pass':'fail'}><strong>{r.passed?'✓':'×'} TEST {String(i+1).padStart(2,'0')}</strong><code>{t('Ответ','Actual')}: {r.actual}</code>{!r.passed&&<code>{t('Ожидалось','Expected')}: {r.expected}</code>}</div>)}</div></>}
           {result?.stdout&&<pre>{result.stdout}</pre>}
+            </div>
+            <form className="terminal-command-line" onSubmit={e=>{e.preventDefault();executeTerminalCommand();}}><label htmlFor="terminal-command">›</label><input id="terminal-command" value={terminalCommand} onChange={e=>setTerminalCommand(e.target.value)} disabled={busy} spellCheck={false} aria-label={t('Команда терминала: run или submit','Terminal command: run or submit')}/><button type="submit" disabled={busy} aria-label={t('Выполнить команду','Execute command')}><Send size={15}/></button></form>
+          </div>
         </div>
         <div className="runbar"><button className="icon-button" disabled={busy} aria-label={t('Сбросить код','Reset code')} onClick={()=>setDrafts(p=>({...p,[selected]:starterCode(challenge)}))}><RotateCcw size={16}/></button>{status==='loading'||status==='compiling'||status==='running'?<button className="run-button" onClick={stop}><Square size={13}/> {t('СТОП','STOP')}</button>:<button className="run-button" onClick={()=>run(false)} disabled={busy}><Play size={14}/> RUN</button>}<button className="submit-button" onClick={()=>run(true)} disabled={busy}><Send size={14}/> SUBMIT <ChevronRight size={15}/></button></div>
         <div className="local-note">{t('Изолированный запуск · без сети и файлов компьютера','Isolated execution · no network or computer files')}</div>
@@ -246,7 +266,7 @@ function Game({language,difficulty,changeLanguage,changeDifficulty}:{language:La
       <aside className="standings" aria-label={t('Тренировочный прогресс','Training progress')}><div className="standings-head"><Trophy size={17}/><span>TRAINING</span><small>{t('СОЛО','SOLO')}</small></div><div className="your-rank"><span>{t('ТВОЙ ПРОГРЕСС','YOUR PROGRESS')}</span><strong>{String(completed).padStart(2,'0')}<small>/{count}</small></strong></div><ol><li className="is-you"><span className="rank-no">01</span><Avatar kind={avatar}/><span className="racer"><b>{user?.username??'you'}</b><small>{label} · {difficultyName(difficulty)}</small></span><span className="racer-altitude">{altitude(completed).toLocaleString(uiLanguage==='en'?'en-US':'ru-RU')}<small> {t('м','m')}</small></span></li></ol><div className="summit-distance"><Flag size={19}/><span>{t('ДО ВЕРШИНЫ','TO SUMMIT')}<b>{(8848-altitude(completed)).toLocaleString(uiLanguage==='en'?'en-US':'ru-RU')} {t('м','m')}</b></span></div><p className="race-note">{t('Тренировка разрешает вставку кода и подсказки. Для честной дуэли открой режим соревнования.','Training allows paste and hints. Open competition mode for a fair duel.')}</p><button className="restart-link" onClick={async()=>{if(await saveAccount())window.location.assign('/compete');}} disabled={busy}><Trophy size={13}/> {t('Соревнование','Competition')}</button><button className="restart-link" onClick={()=>setReset(true)} disabled={busy}><RotateCcw size={13}/> {t('Начать заново','Start over')}</button></aside>
     </div>
 
-    <Dialog open={help} onOpenChange={setHelp}><DialogContent className="small-dialog"><DialogTitle>{t('Как подняться на вершину','How to reach the summit')}</DialogTitle><DialogDescription>{t('Выбери язык и сложность. В каждом новом наборе пять разных задач. Старый маршрут доступен отдельно; прогресс всех наборов независим.','Choose a language and difficulty. Each new set has five different challenges. The classic route is separate; progress is independent for each route.')}</DialogDescription><ol className="help-steps"><li>{t('Нажми на текущий квадрат маршрута и прочитай задачу.','Select the current checkpoint and read the challenge.')}</li><li>{t('Напиши функцию любым подходящим способом. RUN запускает два примера. В C++ функция main не нужна.','Write a function in any valid way. RUN checks two examples. C++ does not need a main function.')}</li><li>{t('SUBMIT проверяет все пять тестов. Верное решение поднимает твой аватар.','SUBMIT checks all five tests. A correct solution moves your avatar higher.')}</li></ol><p>{t('Войди, чтобы сохранять решения в аккаунте. Без аккаунта прогресс остаётся в этом браузере; гостевые решения автоматически в аккаунт не переносятся.','Sign in to save solutions to your account. Without an account, progress stays in this browser; guest solutions are not automatically imported.')}</p><p>{t('Тренировка выполняется в браузерной песочнице без сети и файлов компьютера. Защищённая серверная проверка и запрет вставки включаются в режиме соревнования.','Training runs in a browser sandbox without access to the network or your files. Competition uses server-side checking and disables pasting.')}</p><button className="submit-button" onClick={()=>setHelp(false)}>{t('Понятно','Got it')}</button></DialogContent></Dialog>
+    <Dialog open={help} onOpenChange={setHelp}><DialogContent className="small-dialog"><DialogTitle>{t('Как подняться на вершину','How to reach the summit')}</DialogTitle><DialogDescription>{t('Выбери язык и сложность. В каждом новом наборе пять разных задач. Старый маршрут доступен отдельно; прогресс всех наборов независим.','Choose a language and difficulty. Each new set has five different challenges. The classic route is separate; progress is independent for each route.')}</DialogDescription><ol className="help-steps"><li>{t('Нажми на текущий квадрат маршрута и прочитай задачу.','Select the current checkpoint and read the challenge.')}</li><li>{t('Напиши функцию любым подходящим способом. RUN запускает два примера. В C++ функция main не нужна.','Write a function in any valid way. RUN checks two examples. C++ does not need a main function.')}</li><li>{t('SUBMIT проверяет все пять тестов. Верное решение поднимает твой аватар.','SUBMIT checks all five tests. A correct solution moves your avatar higher.')}</li><li>{t('В коде Enter создаёт новую строку. В строке терминала Enter выполняет run или submit; Ctrl+Enter в редакторе отправляет решение.','Enter adds a new line in the editor. In the terminal command line, Enter runs run or submit; Ctrl+Enter in the editor submits your solution.')}</li></ol><p>{t('Войди, чтобы сохранять решения в аккаунте. Без аккаунта прогресс остаётся в этом браузере; гостевые решения автоматически в аккаунт не переносятся.','Sign in to save solutions to your account. Without an account, progress stays in this browser; guest solutions are not automatically imported.')}</p><p>{t('Тренировка выполняется в браузерной песочнице без сети и файлов компьютера. Защищённая серверная проверка и запрет вставки включаются в режиме соревнования.','Training runs in a browser sandbox without access to the network or your files. Competition uses server-side checking and disables pasting.')}</p><button className="submit-button" onClick={()=>setHelp(false)}>{t('Понятно','Got it')}</button></DialogContent></Dialog>
     <Dialog open={profile} onOpenChange={setProfile}><DialogContent className="small-dialog"><DialogTitle>{t('Твой аватар','Your avatar')}</DialogTitle><DialogDescription>{t('Выбери значок, по которому узнаешь себя на скале.','Choose the icon that marks you on the mountain.')}</DialogDescription><div className="avatar-picker">{[0,1,2,3].map(n=><button key={n} onClick={()=>{setAvatar(n);setProfile(false);}} className={avatar===n?'chosen':''} aria-label={t(`Аватар ${n+1}`,`Avatar ${n+1}`)} aria-pressed={avatar===n}><Avatar kind={n}/></button>)}</div></DialogContent></Dialog>
     <Dialog open={reset} onOpenChange={setReset}><DialogContent className="small-dialog"><DialogTitle>{t('Начать восхождение заново?','Start the ascent again?')}</DialogTitle><DialogDescription>{t('Прогресс','Progress')} {label} · {difficultyName(difficulty)} {t('и решения будут удалены','and solutions will be deleted')} {user?t('из текущего аккаунта','from this account'):t('из этого браузера','from this browser')}. {t('Другие языки и уровни сложности не изменятся.','Other languages and difficulty routes will remain unchanged.')}</DialogDescription><div className="dialog-actions"><button className="run-button" onClick={()=>setReset(false)}>{t('Отмена','Cancel')}</button><button className="submit-button" onClick={resetRoute}>{t('Начать заново','Start over')}</button></div></DialogContent></Dialog>
     <Dialog open={summit} onOpenChange={setSummit}><DialogContent className="small-dialog summit-dialog"><Flag size={48}/><DialogTitle>{t('ВЕРШИНА ДОСТИГНУТА','SUMMIT REACHED')}</DialogTitle><DialogDescription>8,848 {t('м','m')} · {label.toUpperCase()} CLIMB COMPLETED</DialogDescription><p>{t('Все','All')} {count} {t('задач пройдены.','challenges cleared.')}<br/>{t('Время восхождения:','Ascent time:')} {time}</p><button className="submit-button" onClick={()=>{setSummit(false);setOverview(true);}}>{t('Посмотреть маршрут','View route')}</button></DialogContent></Dialog>
