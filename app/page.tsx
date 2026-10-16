@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from 'react';
-import { ChevronRight, Code2, FileText, Flag, HelpCircle, Maximize2, Minimize2, Minus, Mountain, Play, Plus, RotateCcw, Send, Square, Trophy } from 'lucide-react';
+import { ChevronRight, Code2, Flag, HelpCircle, Maximize2, Minimize2, Minus, Mountain, Play, Plus, RotateCcw, Send, Square, Trophy } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import PythonEditor from '@/components/python-editor';
 import { nodes as classicNodes, pythonLiteral, starter } from '@/lib/challenges';
@@ -62,7 +62,6 @@ function Game({language,difficulty,changeLanguage,changeDifficulty}:{language:La
   const [seconds,setSeconds] = useState(0);
   const [avatar,setAvatar] = useState(0);
   const [editorOpen,setEditorOpen] = useState(true);
-  const [taskOpen,setTaskOpen] = useState(true);
   const [terminalExpanded,setTerminalExpanded] = useState(false);
   const [overview,setOverview] = useState(false);
   const [help,setHelp] = useState(false);
@@ -88,8 +87,6 @@ function Game({language,difficulty,changeLanguage,changeDifficulty}:{language:La
   const round = Math.min(Math.ceil(count/5),Math.floor(completed/5)+1);
   const cameraY = overview ? 0 : Math.max(0,Math.min(1020, current.y-550));
   const time = `${String(Math.floor(seconds/60)).padStart(2,'0')}:${String(seconds%60).padStart(2,'0')}`;
-
-  useEffect(()=>{if(window.innerWidth<=820)setTaskOpen(false);},[]);
 
   useEffect(()=>{
     let active=true;
@@ -142,7 +139,7 @@ function Game({language,difficulty,changeLanguage,changeDifficulty}:{language:La
 
   function select(index:number) {
     if(busy||index>completed)return;
-    setSelected(index); setEditorOpen(true); setTaskOpen(true); setResult(null); setResultCheckpoint(null); setStatus('idle'); setHint(false); setLastCommand(null); setCommandError('');
+    setSelected(index); setEditorOpen(true); setResult(null); setResultCheckpoint(null); setStatus('idle'); setHint(false); setLastCommand(null); setCommandError('');
     if(window.innerWidth<=820) requestAnimationFrame(()=>document.querySelector('.challenge-card')?.scrollIntoView({behavior:'smooth',block:'start'}));
   }
   function stop() {
@@ -183,11 +180,6 @@ function Game({language,difficulty,changeLanguage,changeDifficulty}:{language:La
     else if(command==='submit')run(true);
     else setCommandError(t('Команды: run или submit.','Commands: run or submit.'));
   }
-  function toggleTask() {
-    const next=!taskOpen;
-    setTaskOpen(next);
-    if(next&&window.innerWidth<=820)requestAnimationFrame(()=>document.querySelector('.challenge-card')?.scrollIntoView({behavior:'smooth',block:'start'}));
-  }
   function resetRoute(){stop();setCompleted(0);setSelected(0);setPosition(nodes[0]);setDrafts({});setSeconds(0);setResult(null);setResultCheckpoint(null);setStatus('idle');setReset(false);setSummit(false);setOverview(false);}
 
   return <main className={`climb-app ${editorOpen?'with-editor':''} ${terminalExpanded?'terminal-expanded':''}`}>
@@ -205,7 +197,7 @@ function Game({language,difficulty,changeLanguage,changeDifficulty}:{language:La
       <span>{count} {t('задач','challenges')} · {difficulty==='full'?t('5 лёгких + 5 средних + 5 сложных','5 easy + 5 medium + 5 hard'):difficulty==='classic'?t('прежний прогресс сохранён','previous progress preserved'):t('свой маршрут и прогресс','separate route and progress')}</span>
     </div>
     <div className="play-layout">
-      {editorOpen && taskOpen && <aside id="current-challenge" className="challenge-card brief" aria-label={t('Текущая задача','Current challenge')}>
+      {editorOpen && <aside className="challenge-card brief" aria-label={t('Текущая задача','Current challenge')}>
           <div className="checkpoint-meta"><span>CHECKPOINT {String(selected+1).padStart(2,'0')}</span><span>{selected<completed?t('ПРОЙДЕН','CLEARED'):language==='python'?'PYTHON 3':'C++20'}</span></div>
           <h1>{displayChallenge.title}</h1><p className="topic">{displayChallenge.topic}</p>
           <p className="description">{displayChallenge.description}</p>
@@ -215,7 +207,7 @@ function Game({language,difficulty,changeLanguage,changeDifficulty}:{language:La
           {hint&&<><p className="hint-text">{displayChallenge.hint}</p><RewardHint key={`${language}-${challenge.id}`} language={language} taskId={challenge.id}/></>}
       </aside>}
       {editorOpen && <aside className={`workbench terminal-window ${terminalExpanded?'expanded':''}`} aria-label={t(`Терминал ${label}`,`${label} terminal`)}>
-        <div className="workbench-title"><span><Code2 size={17}/> TERMINAL <small>{t('КОД + ВЫВОД','CODE + OUTPUT')}</small></span><div className="terminal-title-actions"><button className={`terminal-task-toggle ${taskOpen?'active':''}`} aria-controls="current-challenge" aria-expanded={taskOpen} onClick={toggleTask}><FileText size={15}/>{t('ЗАДАЧА','TASK')}</button><button aria-label={terminalExpanded?t('Уменьшить терминал','Shrink terminal'):t('Увеличить терминал','Expand terminal')} onClick={()=>setTerminalExpanded(v=>!v)}>{terminalExpanded?<Minimize2 size={17}/>:<Maximize2 size={17}/>}</button><button aria-label={t('Свернуть редактор','Collapse editor')} onClick={()=>setEditorOpen(false)}><Minus size={18}/></button></div></div>
+        <div className="workbench-title"><span><Code2 size={17}/> TERMINAL <small>{t('КОД + ВЫВОД','CODE + OUTPUT')}</small></span><div className="terminal-title-actions"><button aria-label={terminalExpanded?t('Уменьшить терминал','Shrink terminal'):t('Увеличить терминал','Expand terminal')} onClick={()=>setTerminalExpanded(v=>!v)}>{terminalExpanded?<Minimize2 size={17}/>:<Maximize2 size={17}/>}</button><button aria-label={t('Свернуть редактор','Collapse editor')} onClick={()=>setEditorOpen(false)}><Minus size={18}/></button></div></div>
         <div className="terminal-main">
           <div className="terminal-code">
             <div className="file-tab"><span><i/> {language==='python'?'solution.py':'solution.cpp'}</span><span>Ctrl+Enter → SUBMIT</span></div>
